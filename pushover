@@ -9,7 +9,7 @@ import urlparse
 
 DOCUMENTATION = """
 module: pushover
-short_description: Send notifications via Pushover (https://pushover.net)
+description: Send notifications via Pushover (https://pushover.net)
 author: Ricky Cook
 requirements:
     - pushover appliction token, and user key
@@ -56,8 +56,8 @@ options:
     url_username:
         description:
             - The username for use in HTTP basic authentication. This parameter
-            can be used without C(url_password) for sites that allow empty
-            passwords.
+              can be used without C(url_password) for sites that allow empty
+              passwords.
         required: false
         version_added: '1.6'
     url_password:
