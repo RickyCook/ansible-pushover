@@ -1,0 +1,139 @@
+#!/usr/bin/env python
+
+import httplib
+import json
+import shlex
+import sys
+import urllib
+import urlparse
+
+DOCUMENTATION = """
+module: pushover
+short_description: Send notifications via Pushover (https://pushover.net)
+author: Ricky Cook
+requirements:
+    - pushover appliction token, and user key
+options:
+    url:
+        description:
+            - The URL for the Pushover API
+        required: false
+        default: https://api.pushover.net/1/messages.json
+    token:
+        description:
+            - Your Pushover application token
+        required: true
+    user:
+        description:
+            - The key of the user to send the notification to
+        required: true
+    message:
+        description:
+            - Message to send in the notification
+        required: true
+
+    use_proxy:
+        description:
+            - if C(no), it will not use a proxy, even if one is defined in an
+              environment variable on the target hosts.
+        required: false
+        default: 'yes'
+        choices: ['yes', 'no']
+    validate_certs:
+        description:
+            - If C(no), SSL certificates will not be validated. This should
+              only be used on personally controlled sites using self-signed
+              certificates.
+        required: false
+        default: 'yes'
+        choices: ['yes', 'no']
+    timeout:
+        description:
+            - Timeout for URL request
+        required: false
+        default: 10
+        version_added: '1.8'
+    url_username:
+        description:
+            - The username for use in HTTP basic authentication. This parameter
+            can be used without C(url_password) for sites that allow empty
+            passwords.
+        required: false
+        version_added: '1.6'
+    url_password:
+        description:
+            - The password for use in HTTP basic authentication. If the
+              C(url_username) parameter is not specified, the C(url_password)
+              parameter will not be used.
+        required: false
+        version_added: '1.6'
+"""
+
+def main():
+    argument_spec = url_argument_spec()
+    argument_spec.update({
+        'url': dict(required=False,
+                    default='https://api.pushover.net/1/messages.json'),
+        'timeout': dict(required=False,
+                        type='int',
+                        default=10),
+        'token': dict(required=True),
+        'user': dict(required=True),
+        'message': dict(required=True),
+    })
+    del argument_spec['force']  # always forced
+
+    module = AnsibleModule(argument_spec=argument_spec)
+
+    # Generate the POST data from a subset of the params
+    data = urllib.urlencode({
+        key: module.params[key]
+        for key in ('token', 'user', 'message')
+    })
+
+    rsp, info = fetch_url(
+        module,
+        module.params['url'],
+
+        method='POST',
+        force=True,
+        data=data,
+        use_proxy=module.params['use_proxy'],
+        timeout=module.params['timeout'],
+    )
+
+    # Check for success/fail response
+    if info['status'] != 200:
+        module.fail_json(msg="Request failed",
+                         status_code=info['status'],
+                         response=info['msg'],
+                         url=module.params['url'],)
+
+    try:
+        obj = json.load(rsp)
+    except ValueError:
+        module.fail_json(msg="Unexpected non-JSON data from server",
+                         mime_type=info['type'],
+                         url=module.params['url'])
+
+    if obj['status'] != 1:
+        if 'errors' in obj and obj['errors']:
+            error_message = "Pushover failed to send notifications:\n"
+            error_message += "\n".join(
+                (" - %s" %  message for message in obj['errors'])
+            )
+            module.fail_json(msg=error_message, **obj)
+
+        else:
+            module.fail_json(
+                msg="Pushover reported failure but gave no errors",
+                **obj
+            )
+
+    module.exit_json(url=module.params['url'], changed=True)
+
+# Import Ansible and run
+from ansible.module_utils.basic import *
+from ansible.module_utils.urls import *
+
+main()
